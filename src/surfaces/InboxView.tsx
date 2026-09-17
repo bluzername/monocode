@@ -2628,9 +2628,9 @@ function CopyBranchNameButton({ branch }: { branch: string }) {
       aria-label={copied ? "Copied" : "Copy branch name"}
       className="shrink-0 rounded p-0.5 text-content/40 hover:bg-content/8 hover:text-content/70"
       onClick={() => {
-        playCue("copy");
         void copyText(branch).then(
           () => {
+            playCue("copy");
             setCopied(true);
             if (timer.current != null) window.clearTimeout(timer.current);
             timer.current = window.setTimeout(() => setCopied(false), 2000);
