@@ -16,6 +16,7 @@ import {
   lastActivityIndex,
   nestedScrollAbsorbsWheel,
   proseSummary,
+  resolveToolCallDisplay,
   isSubagentBlock,
   subagentBrief,
   subagentFailureSummary,
@@ -1261,6 +1262,41 @@ describe("editVerb", () => {
   it("falls back to Edit for unknown phrasing", () => {
     expect(editVerb("Patching src/App.tsx")).toBe("Edit");
     expect(editVerb("")).toBe("Edit");
+  });
+});
+
+describe("resolveToolCallDisplay", () => {
+  it("opens the exact path shown in the label, even when preview.path disagrees", () => {
+    // Two skills named SKILL.md: one under the provider's own skills folder
+    // (what the label names, from issue #322) and one under the project's
+    // .claude/skills that a preview field points at instead.
+    const label = "Read /Users/dev/.codex/skills/zuse/SKILL.md";
+    const preview = {
+      kind: "read" as const,
+      path: "/Users/dev/project/.claude/skills/custom-skill/SKILL.md",
+      fileName: "SKILL.md",
+    };
+    const result = resolveToolCallDisplay(label, preview, "/Users/dev/project");
+    expect(result.target).toBe("/Users/dev/.codex/skills/zuse/SKILL.md");
+    expect(result.filePath).toBe(result.target);
+    expect(result.filePath).not.toBe(preview.path);
+  });
+
+  it("still resolves from preview.path when the label carries no literal path", () => {
+    const preview = {
+      kind: "read" as const,
+      path: "/Users/dev/project/src/App.tsx",
+      fileName: "App.tsx",
+    };
+    const result = resolveToolCallDisplay("Read", preview, "/Users/dev/project");
+    expect(result.target).toBe("src/App.tsx");
+    expect(result.filePath).toBe("/Users/dev/project/src/App.tsx");
+  });
+
+  it("falls back to the raw label when there is no recognisable action", () => {
+    const result = resolveToolCallDisplay("Thinking", undefined, "/Users/dev/project");
+    expect(result.action).toBeUndefined();
+    expect(result.target).toBeUndefined();
   });
 });
 
