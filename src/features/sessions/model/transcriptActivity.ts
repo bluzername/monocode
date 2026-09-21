@@ -8,7 +8,11 @@ import {
   isWeakToolTitle,
 } from "../../../integrations/harness/core/preview";
 import { leafName } from "../../files/model/fileName";
-import { displayPath, resolveWorkspacePath } from "../../../shared/lib/paths";
+import {
+  displayPath,
+  pathKey,
+  resolveWorkspacePath,
+} from "../../../shared/lib/paths";
 import { INTERRUPT_MESSAGE } from "./inFlight";
 import type { Block, ToolPreview } from "./session";
 import { allModels } from "./models";
@@ -207,6 +211,13 @@ export type ToolCallDisplay = {
   fileName: string;
   filePath?: string;
   isFile: boolean;
+  /**
+   * False when a write preview's own path resolves to a different file than
+   * `filePath` - the label showed one file, but the preview would diff
+   * another. A row like this must fall back to the plain file control rather
+   * than a diff for the wrong file.
+   */
+  previewMatchesFile: boolean;
 };
 
 /**
@@ -257,7 +268,7 @@ export function resolveToolCallDisplay(
         ? preview?.query
         : undefined);
   if (!action || !target) {
-    return { fileName: "file", isFile: false };
+    return { fileName: "file", isFile: false, previewMatchesFile: true };
   }
   const isFile = action !== "Find" && action !== "Skill";
   const fileName =
@@ -271,7 +282,17 @@ export function resolveToolCallDisplay(
   // Resolve from `target`, not `preview.path`, so the file that opens always
   // matches the path the row displays.
   const filePath = resolveWorkspacePath(target, cwd);
-  return { action, target, fileName, filePath, isFile };
+  // A write preview's own path can still disagree with `target` (e.g. two
+  // files sharing a SKILL.md name). When it does, the preview would render a
+  // diff for a file other than the one the row opens, so callers must not
+  // show it as this row's diff.
+  const previewPath =
+    preview?.kind === "write" && preview.path
+      ? resolveWorkspacePath(displayPath(preview.path, cwd), cwd)
+      : undefined;
+  const previewMatchesFile =
+    !previewPath || !filePath || pathKey(previewPath) === pathKey(filePath);
+  return { action, target, fileName, filePath, isFile, previewMatchesFile };
 }
 
 /**

@@ -3214,7 +3214,7 @@ function ToolCallSummary({
   failed?: boolean;
   status?: ToolCallState;
 }) {
-  const { action, target, fileName, filePath, isFile } =
+  const { action, target, fileName, filePath, isFile, previewMatchesFile } =
     resolveToolCallDisplay(label, preview, cwd);
   if (!action || !target) {
     return (
@@ -3235,6 +3235,7 @@ function ToolCallSummary({
   const canPreview =
     interactive &&
     preview?.kind === "write" &&
+    previewMatchesFile &&
     (preview.contentOnly ||
       preview.lines?.some((line) => line.kind !== "context"));
   const actionTone = failed ? "text-red-400" : "text-content/50";
