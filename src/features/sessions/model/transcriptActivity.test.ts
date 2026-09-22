@@ -1335,6 +1335,49 @@ describe("resolveToolCallDisplay", () => {
     const result = resolveToolCallDisplay("Write", preview, "/Users/dev/project");
     expect(result.previewMatchesFile).toBe(true);
   });
+
+  it("falls back to the write preview's path when the label's target is plain English, not a filename", () => {
+    // A harness can phrase an edit's label as a description ("dependency
+    // versions") rather than a path. That description does not look like a
+    // file, so the row must still open and diff the preview's real file
+    // instead of failing to resolve anything.
+    const label = "Edit dependency versions";
+    const preview = {
+      kind: "write" as const,
+      path: "/Users/dev/project/package.json",
+      fileName: "package.json",
+    };
+    const result = resolveToolCallDisplay(label, preview, "/Users/dev/project");
+    expect(result.target).toBe("package.json");
+    expect(result.filePath).toBe("/Users/dev/project/package.json");
+    expect(result.previewMatchesFile).toBe(true);
+  });
+
+  it("still trusts a label's own path over the write preview when it looks like a file", () => {
+    const label = "Edit /Users/dev/.codex/skills/zuse/SKILL.md";
+    const preview = {
+      kind: "write" as const,
+      path: "/Users/dev/project/.claude/skills/custom-skill/SKILL.md",
+      fileName: "SKILL.md",
+    };
+    const result = resolveToolCallDisplay(label, preview, "/Users/dev/project");
+    expect(result.target).toBe("/Users/dev/.codex/skills/zuse/SKILL.md");
+  });
+
+  it("does not treat an unresolved write-preview path as a confirmed match", () => {
+    // The preview's own path is relative and cwd is unknown here, so it
+    // cannot be resolved at all - that is not the same as it agreeing with
+    // the label's file, and must not be shown as though it were.
+    const label = "Edit /Users/dev/project/src/App.tsx";
+    const preview = {
+      kind: "write" as const,
+      path: "src/App.tsx",
+      fileName: "App.tsx",
+    };
+    const result = resolveToolCallDisplay(label, preview, undefined);
+    expect(result.filePath).toBe("/Users/dev/project/src/App.tsx");
+    expect(result.previewMatchesFile).toBe(false);
+  });
 });
 
 describe("nestedScrollAbsorbsWheel", () => {

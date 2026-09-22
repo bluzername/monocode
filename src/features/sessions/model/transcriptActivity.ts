@@ -10,6 +10,7 @@ import {
 import { leafName } from "../../files/model/fileName";
 import {
   displayPath,
+  looksLikeFilePath,
   pathKey,
   resolveWorkspacePath,
 } from "../../../shared/lib/paths";
@@ -234,6 +235,8 @@ export function resolveToolCallDisplay(
   cwd: string | undefined,
 ): ToolCallDisplay {
   const parts = label.match(/^(Read|Find|Skill|List|Edit|Write)\s+(.+)$/);
+  const labelVerb = parts?.[1];
+  const labelTarget = parts?.[2];
   // A write preview carries the path itself, so edits get the same verb + file
   // chip as reads rather than falling through to a raw label.
   const writeTarget =
@@ -242,8 +245,19 @@ export function resolveToolCallDisplay(
         ? displayPath(preview.path, cwd)
         : preview.fileName
       : undefined;
+  const isFileVerb = (verb: string | undefined) =>
+    verb === "Read" || verb === "List" || verb === "Edit" || verb === "Write";
+  // A file-verb's captured target is only trustworthy as a path when it
+  // looks like one. Harnesses sometimes phrase these in plain English (e.g.
+  // "Edit dependency versions"), and treating that phrase itself as a
+  // filename both fails to resolve and shoulders out a real path the write
+  // preview already has.
+  const trustedLabelTarget =
+    labelTarget && (!isFileVerb(labelVerb) || looksLikeFilePath(labelTarget))
+      ? labelTarget
+      : undefined;
   const action =
-    parts?.[1] ??
+    labelVerb ??
     (writeTarget ? editVerb(label) : undefined) ??
     (/^read$/i.test(label.trim()) && (preview?.path || preview?.fileName)
       ? "Read"
@@ -255,7 +269,7 @@ export function resolveToolCallDisplay(
             ? "Skill"
             : undefined);
   const target =
-    parts?.[2] ??
+    trustedLabelTarget ??
     writeTarget ??
     (action === "Read" ||
     action === "List" ||
@@ -286,12 +300,17 @@ export function resolveToolCallDisplay(
   // files sharing a SKILL.md name). When it does, the preview would render a
   // diff for a file other than the one the row opens, so callers must not
   // show it as this row's diff.
-  const previewPath =
-    preview?.kind === "write" && preview.path
-      ? resolveWorkspacePath(displayPath(preview.path, cwd), cwd)
-      : undefined;
-  const previewMatchesFile =
-    !previewPath || !filePath || pathKey(previewPath) === pathKey(filePath);
+  const hasWritePreviewPath = preview?.kind === "write" && !!preview.path;
+  const previewPath = hasWritePreviewPath
+    ? resolveWorkspacePath(displayPath(preview.path as string, cwd), cwd)
+    : undefined;
+  // A write preview with a path that failed to resolve, or a target that
+  // failed to resolve, is not a confirmed match - it is unknown, and an
+  // unknown match must not render as if it were one. Only "no write preview
+  // path at all" defaults to true, since there is then nothing to disagree.
+  const previewMatchesFile = !hasWritePreviewPath
+    ? true
+    : !!previewPath && !!filePath && pathKey(previewPath) === pathKey(filePath);
   return { action, target, fileName, filePath, isFile, previewMatchesFile };
 }
 

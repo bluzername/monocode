@@ -90,6 +90,27 @@ export function joinPath(parent: string, relative: string): string {
 }
 
 /**
+ * The real OS home directory, primed once at startup from `fs.homeDir()`
+ * (see `setHomeDir`). This module has no direct OS access of its own, so
+ * until it is primed - or in a context that never primes it, like a test -
+ * a `~/` reference falls back to `homeDirFromCwd`, which only works when the
+ * project's own cwd happens to sit under a recognisable home.
+ */
+let cachedHomeDir: string | undefined;
+
+/**
+ * Record the OS's actual home directory so `~/` references resolve exactly,
+ * instead of only being inferred from `cwd`. That inference fails whenever a
+ * project lives outside the usual `/Users/<name>` or `/home/<name>` shape -
+ * a custom install location, a container, a drive letter this module does
+ * not recognise - even though the real home directory is known. Pass
+ * `undefined` to clear it, e.g. between tests.
+ */
+export function setHomeDir(path: string | undefined): void {
+  cachedHomeDir = path ? trimSlash(slash(path)) : undefined;
+}
+
+/**
  * Home directory, recognised the same way `prettyCwd` finds one inside a
  * project path. This module has no direct OS access, so a `~/` reference can
  * only be expanded when the project's own cwd sits under a recognisable home.
@@ -171,7 +192,7 @@ function parseWorkspaceFileReference(
   // front when a home directory can be recognised, so it flows through the
   // same absolute-path handling below instead of being joined onto cwd.
   if (value === "~" || value.startsWith("~/")) {
-    const home = cwd ? homeDirFromCwd(cwd) : undefined;
+    const home = cachedHomeDir ?? (cwd ? homeDirFromCwd(cwd) : undefined);
     // Without a recognisable home, joining "~/..." onto cwd like an ordinary
     // relative path would silently produce a nonsense location instead of
     // the file the reference actually means.
@@ -201,7 +222,7 @@ export function isExtensionlessFileName(value: string): boolean {
   return /^(dockerfile|makefile|gemfile|license)$/i.test(value);
 }
 
-function looksLikeFilePath(value: string): boolean {
+export function looksLikeFilePath(value: string): boolean {
   if (value.startsWith("/") || /^[A-Za-z]:\//.test(value)) return true;
   if (value.includes("/")) return true;
   return isExtensionlessFileName(value) ||
