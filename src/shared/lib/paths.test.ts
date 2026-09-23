@@ -123,6 +123,15 @@ describe("workspace file references", () => {
     ).toBe("C:/Users/dev/skills/SKILL.md");
   });
 
+  it("recognises a Windows home directory regardless of the Users segment's case", () => {
+    // A cwd like "C:/users/dev/project" (lowercase "users") is just as valid
+    // a Windows home shape as "C:/Users/dev/project" - the OS itself is not
+    // case-sensitive here, so cwd-based inference should not be either.
+    expect(
+      resolveWorkspacePath("~/notes.md", "c:/users/dev/project"),
+    ).toBe("c:/users/dev/notes.md");
+  });
+
   it("leaves a ~/ reference unresolved when cwd has no recognisable home directory", () => {
     expect(
       resolveWorkspacePath("~/.codex/skills/zuse/SKILL.md", "/data/project"),

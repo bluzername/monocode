@@ -125,7 +125,7 @@ function homeDirFromCwd(cwd: string): string | undefined {
   if (
     parts.length >= 3 &&
     /^[A-Za-z]:$/.test(parts[0]) &&
-    parts[1] === "Users"
+    parts[1].toLowerCase() === "users"
   ) {
     return `${parts[0]}/${parts[1]}/${parts[2]}`;
   }
