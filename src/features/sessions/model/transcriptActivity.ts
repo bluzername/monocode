@@ -10,7 +10,6 @@ import {
 import { leafName } from "../../files/model/fileName";
 import {
   displayPath,
-  looksLikeFilePath,
   pathKey,
   resolveWorkspacePath,
 } from "../../../shared/lib/paths";
@@ -253,7 +252,8 @@ export function resolveToolCallDisplay(
   // filename both fails to resolve and shoulders out a real path the write
   // preview already has.
   const trustedLabelTarget =
-    labelTarget && (!isFileVerb(labelVerb) || looksLikeFilePath(labelTarget))
+    labelTarget &&
+    (!isFileVerb(labelVerb) || !!resolveWorkspacePath(labelTarget, cwd))
       ? labelTarget
       : undefined;
   const action =

@@ -1,3 +1,23 @@
+/**
+ * Wait for `promise` to settle, but give up after `ms` and resolve anyway so
+ * a caller is never stuck on something that is slow or never settles (e.g. a
+ * boot-time IPC call gating the first render). If `promise` does go on to
+ * settle later, anything already chained onto it (`.then`/`.catch`) still
+ * runs as normal - this only bounds how long *this* wait can take.
+ */
+export function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    promise.then(finish, finish);
+    setTimeout(finish, ms);
+  });
+}
+
 /** Run async work with a small fixed worker pool. */
 export async function forEachConcurrent<T>(
   items: readonly T[],

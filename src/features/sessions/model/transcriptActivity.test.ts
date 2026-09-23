@@ -1378,6 +1378,34 @@ describe("resolveToolCallDisplay", () => {
     expect(result.filePath).toBe("/Users/dev/project/src/App.tsx");
     expect(result.previewMatchesFile).toBe(false);
   });
+
+  it("trusts a label target with a line:column suffix over a disagreeing write preview", () => {
+    // "main.ts:12" does not end in ".ts" once the location suffix is
+    // counted, so a plain extension check on the label text alone rejects
+    // it. resolveWorkspacePath already strips that suffix, so the trust
+    // check must go through it instead of looksLikeFilePath directly.
+    const label = "Edit src/main.ts:12";
+    const preview = {
+      kind: "write" as const,
+      path: "/Users/dev/project/other.ts",
+      fileName: "other.ts",
+    };
+    const result = resolveToolCallDisplay(label, preview, "/Users/dev/project");
+    expect(result.target).toBe("src/main.ts:12");
+    expect(result.filePath).toBe("/Users/dev/project/src/main.ts");
+    expect(result.previewMatchesFile).toBe(false);
+  });
+
+  it("trusts a Windows-style label target ending in an extensionless filename", () => {
+    // Backslash separators mean looksLikeFilePath's own "/" check never
+    // fires, and "Dockerfile" alone has no dot extension - resolving through
+    // resolveWorkspacePath (which normalises slashes first) is what makes
+    // this recognisable as a real path instead of plain English.
+    const label = "Read C:\\repo\\docker\\Dockerfile";
+    const result = resolveToolCallDisplay(label, undefined, "C:/repo");
+    expect(result.target).toBe("C:\\repo\\docker\\Dockerfile");
+    expect(result.filePath).toBe("C:/repo/docker/Dockerfile");
+  });
 });
 
 describe("nestedScrollAbsorbsWheel", () => {

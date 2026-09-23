@@ -12,6 +12,7 @@ import {
   loadBootWorkspace,
   reportQuitPoll,
 } from "./app/model/appLifecycle";
+import { settleWithin } from "./shared/lib/concurrent";
 import { homeDir } from "./platform/tauri/fs";
 import { setHomeDir } from "./shared/lib/paths";
 import { consumeInstalledUpdate } from "./app/model/updateNotice";
@@ -23,9 +24,17 @@ initSounds();
 // rather than only being inferred from a session's cwd. Best-effort: a
 // project outside a recognisable home still falls back to that inference if
 // this IPC call is ever unavailable or slow.
-void homeDir()
+const homeDirPrimed = homeDir()
   .then(setHomeDir)
   .catch(() => {});
+// `setHomeDir` only updates module state - it does not make an already
+// rendered activity row rerender. Boot must wait for this to settle (or give
+// up on it) before the first render, or a `~/` row painted from that first
+// render can be stuck unresolved for the rest of the session. Capped so a
+// slow or hung IPC call can not stall boot itself; if it does resolve later,
+// `setHomeDir` above still runs and primes anything rendered from then on.
+const HOME_DIR_BOOT_TIMEOUT_MS = 1000;
+const homeDirReady = settleWithin(homeDirPrimed, HOME_DIR_BOOT_TIMEOUT_MS);
 
 function dismissBootSplash() {
   const splash = document.getElementById("boot-splash");
@@ -69,8 +78,8 @@ void listen("quit_aborted", () => {
   abortQuit();
 });
 
-void loadBootWorkspace().then(
-  ({ windowTransfer, resumed, history, historyCwd }) => {
+void Promise.all([homeDirReady, loadBootWorkspace()]).then(
+  ([, { windowTransfer, resumed, history, historyCwd }]) => {
     const installedUpdate = windowTransfer ? null : consumeInstalledUpdate();
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>
