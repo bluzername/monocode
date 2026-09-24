@@ -12,7 +12,6 @@ import {
   loadBootWorkspace,
   reportQuitPoll,
 } from "./app/model/appLifecycle";
-import { settleWithin } from "./shared/lib/concurrent";
 import { homeDir } from "./platform/tauri/fs";
 import { setHomeDir } from "./shared/lib/paths";
 import { consumeInstalledUpdate } from "./app/model/updateNotice";
@@ -20,21 +19,12 @@ import "./styles/index.css";
 
 initAppearance();
 initSounds();
-// Prime the real home directory once so `~/` file references resolve exactly
-// rather than only being inferred from a session's cwd. Best-effort: a
-// project outside a recognisable home still falls back to that inference if
-// this IPC call is ever unavailable or slow.
+// Prime the real home directory before the first render so every `~/` file
+// reference resolves consistently. The IPC call is local and failures remain
+// best-effort, falling back to inference from a session's cwd.
 const homeDirPrimed = homeDir()
   .then(setHomeDir)
   .catch(() => {});
-// `setHomeDir` only updates module state - it does not make an already
-// rendered activity row rerender. Boot must wait for this to settle (or give
-// up on it) before the first render, or a `~/` row painted from that first
-// render can be stuck unresolved for the rest of the session. Capped so a
-// slow or hung IPC call can not stall boot itself; if it does resolve later,
-// `setHomeDir` above still runs and primes anything rendered from then on.
-const HOME_DIR_BOOT_TIMEOUT_MS = 1000;
-const homeDirReady = settleWithin(homeDirPrimed, HOME_DIR_BOOT_TIMEOUT_MS);
 
 function dismissBootSplash() {
   const splash = document.getElementById("boot-splash");
@@ -78,7 +68,7 @@ void listen("quit_aborted", () => {
   abortQuit();
 });
 
-void Promise.all([homeDirReady, loadBootWorkspace()]).then(
+void Promise.all([homeDirPrimed, loadBootWorkspace()]).then(
   ([, { windowTransfer, resumed, history, historyCwd }]) => {
     const installedUpdate = windowTransfer ? null : consumeInstalledUpdate();
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
