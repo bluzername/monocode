@@ -1074,7 +1074,11 @@ function TurnDuration({
           <HandoffButton from={fromHarness} onPick={onHandoff} />
         ) : null}
         {fromHarness && onSecondOpinion ? (
-          <SecondOpinionButton from={fromHarness} onPick={onSecondOpinion} />
+          <SecondOpinionButton
+            from={fromHarness}
+            onPick={onSecondOpinion}
+            includeCurrent
+          />
         ) : null}
         <TurnMetricsBadge metrics={metrics} elapsedMs={elapsedMs} />
       </span>
