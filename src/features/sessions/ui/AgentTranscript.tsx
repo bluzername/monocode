@@ -928,6 +928,7 @@ function AgentTranscriptComponent({
                   onSaveNote={onSaveNote}
                   harness={turnHarness}
                   fromHarness={turnHarness}
+                  fromModel={turnModel?.id}
                   onSecondOpinion={
                     onSecondOpinion
                       ? (target) => onSecondOpinion(target, turn)
@@ -1031,6 +1032,7 @@ function TurnDuration({
   copyText: output,
   onSaveNote,
   fromHarness,
+  fromModel,
   onSecondOpinion,
   onHandoff,
 }: {
@@ -1044,6 +1046,8 @@ function TurnDuration({
   copyText?: string;
   onSaveNote?: (text: string) => void | Promise<void>;
   fromHarness?: HarnessId;
+  /** The turn's own model, so a same-harness second opinion can hide it. */
+  fromModel?: string;
   onSecondOpinion?: (target: ModelTarget) => void;
   onHandoff?: (target: ModelTarget) => void;
 }) {
@@ -1076,8 +1080,10 @@ function TurnDuration({
         {fromHarness && onSecondOpinion ? (
           <SecondOpinionButton
             from={fromHarness}
+            fromModel={fromModel}
             onPick={onSecondOpinion}
             includeCurrent
+            excludeFromModel
           />
         ) : null}
         <TurnMetricsBadge metrics={metrics} elapsedMs={elapsedMs} />
