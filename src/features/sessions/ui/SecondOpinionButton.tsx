@@ -26,6 +26,7 @@ import { useLockOverscroll } from "../../../shared/hooks/useLockOverscroll";
 import {
   getModelSnapshot,
   getPickerVisibilitySnapshot,
+  hasLiveCatalog,
   isPickerProviderVisible,
   mergeModelSettings,
   modelEffortSetting,
@@ -258,10 +259,15 @@ export function SecondOpinionButton({
 
   // With the current model hidden, a target harness only counts as usable
   // if it still has a model left to offer once that exclusion is applied.
+  // A harness whose catalog has not loaded yet (e.g. Codex, which has no
+  // built-in fallback list) cannot be confirmed empty, so it gets the
+  // benefit of the doubt rather than disabling the button before the menu
+  // can even open to trigger `refreshHarnessCatalogs`.
   const hasSelectableModel =
     !excludeFromModel || !fromModel
       ? true
       : targets.some((harness) => {
+          if (!hasLiveCatalog(harness)) return true;
           const list = modelsFor(harness);
           return harness === from
             ? list.some((model) => model.id !== fromModel)
