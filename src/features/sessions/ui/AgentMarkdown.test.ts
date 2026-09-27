@@ -67,6 +67,39 @@ describe("AgentMarkdown inline code", () => {
   });
 });
 
+describe("AgentMarkdown code fence highlighting", () => {
+  it("falls back to JS highlighting for a fence tagged text", () => {
+    const markup = renderToStaticMarkup(
+      createElement(AgentMarkdown, {
+        text: "```text\nconst x = 1;\n```",
+      }),
+    );
+
+    expect(markup).toContain('data-language="js"');
+    expect(markup).not.toContain('data-language="text"');
+  });
+
+  it("falls back to JS highlighting for an untagged fence", () => {
+    const markup = renderToStaticMarkup(
+      createElement(AgentMarkdown, {
+        text: "```\nconst x = 1;\n```",
+      }),
+    );
+
+    expect(markup).toContain('data-language="js"');
+  });
+
+  it("leaves an explicit real language alone", () => {
+    const markup = renderToStaticMarkup(
+      createElement(AgentMarkdown, {
+        text: "```python\nx = 1\n```",
+      }),
+    );
+
+    expect(markup).toContain('data-language="python"');
+  });
+});
+
 describe("AgentMarkdown note images", () => {
   it("keeps app-owned note image references for the async image resolver", () => {
     const markup = renderToStaticMarkup(
