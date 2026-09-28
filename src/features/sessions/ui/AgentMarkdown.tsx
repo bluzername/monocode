@@ -341,6 +341,15 @@ function MarkdownCode({
     (fence.language ? fileNameForLanguage(fence.language) : "");
   const lineNumbers = !/\bnoLineNumbers\b/.test(meta);
   const code = textContent(children);
+  // highlightLanguageFor swaps the fence language for "js" so Shiki still
+  // colors plaintext fences, but Streamdown's CodeBlock reuses that same
+  // value for the header label. Without this, a `text` fence would show a
+  // "js" header, and an untagged fence would gain a header it never had.
+  // Render our own label with the original language instead, and hide
+  // Streamdown's via CSS (see .markdown-code-fallback-label in index.css).
+  const isPlaintextFallback = PLAINTEXT_FENCE_LANGUAGES.has(
+    fence.language.toLowerCase(),
+  );
 
   return (
     <div className="markdown-code-shell" dir="ltr">
@@ -351,6 +360,10 @@ function MarkdownCode({
       ) : null}
       {fence.filePath ? (
         <MarkdownCodePath path={fence.filePath} startLine={fence.startLine} />
+      ) : isPlaintextFallback ? (
+        <span className="markdown-code-fallback-label" aria-hidden="true">
+          {fence.language}
+        </span>
       ) : null}
       <CodeCopyButton code={code} />
       <CodeBlock
