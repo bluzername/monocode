@@ -113,6 +113,17 @@ type LiveAgentTask = {
   toolUseId?: string;
   description: string;
   backgrounded: boolean;
+  /**
+   * The `live.toolsById` key this task's row was created or updated under,
+   * once something has actually opened one. Left unset while `agentTasks`
+   * only knows the task from `background_tasks_changed`: the Task tool_use
+   * that started it already opened its own row, keyed by its real id, before
+   * that snapshot could ever name a task_id for it (see `isAgentTaskType` —
+   * bash and other non-agent background tasks have no such row already, so
+   * they are unaffected). Minting a synthetic id there too, the way this used
+   * to work, opened a second, unopenable row for the same subagent (#493).
+   */
+  blockId?: string;
 };
 
 type BackgroundTask = {
@@ -1129,18 +1140,30 @@ function handleAgentLifecycle(
     });
     syncBackgroundWait(live);
     if (!isAgentTaskType(started.taskType)) return true;
+    // A background snapshot for this task may have already created its row
+    // under a synthetic id (no tool_use_id was known yet); reuse that id
+    // rather than switching to the real one, or the row would be duplicated.
+    const existingTask = live.agentTasks.get(started.taskId);
+    const blockId =
+      existingTask?.blockId ??
+      started.toolUseId ??
+      `agent:${started.description}`;
     live.agentTasks.set(started.taskId, {
       taskId: started.taskId,
       toolUseId: started.toolUseId,
       description: started.description,
       backgrounded: started.backgrounded,
+      blockId,
     });
-    upsertAgentTool(
-      live,
-      started.toolUseId,
-      started.description,
-      "in_progress",
-    );
+    upsertAgentTool(live, blockId, started.description, "in_progress");
+    // Subagent nesting (noteSubagentTool/noteSubagentResults) looks its
+    // parent up by the real tool_use_id Claude sends on every nested call, so
+    // that id has to resolve to this row too, even when the row itself kept
+    // its earlier synthetic id.
+    if (started.toolUseId && started.toolUseId !== blockId) {
+      const block = live.toolsById.get(blockId);
+      if (block) live.toolsById.set(started.toolUseId, block);
+    }
     return true;
   }
 
@@ -1154,9 +1177,13 @@ function handleAgentLifecycle(
       (progress.subagentType
         ? `${progress.subagentType.replace(/[_-]+/g, " ")} subagent`
         : undefined);
+    // Prefer the task's own tracked block id over the event's tool_use_id:
+    // between the background snapshot and task_started, the row may still be
+    // keyed synthetically, and progress.toolUseId would otherwise open a
+    // second row instead of updating the one already showing.
     upsertAgentTool(
       live,
-      progress.toolUseId ?? task?.toolUseId,
+      task?.blockId ?? progress.toolUseId,
       title,
       "in_progress",
       detail,
@@ -1227,12 +1254,17 @@ function handleAgentLifecycle(
   }
   for (const row of liveTasks) {
     if (live.agentTasks.has(row.taskId)) continue;
+    // Bookkeeping only, deliberately no upsertAgentTool call: the Task
+    // tool_use that started this subagent already opened its row, under its
+    // own real id, before this snapshot could ever name a task_id for it.
+    // Minting a second, synthetic-id row here is the duplicate in #493 -
+    // task_started (or task_progress) upserts the real row once it arrives,
+    // same as for a subagent that was never backgrounded.
     live.agentTasks.set(row.taskId, {
       taskId: row.taskId,
       description: row.description,
       backgrounded: true,
     });
-    upsertAgentTool(live, undefined, row.description, "in_progress");
   }
   maybeFinishTurn(live);
   syncBackgroundWait(live);
@@ -1454,7 +1486,7 @@ function completeAgentTask(
   if (task) {
     upsertAgentTool(
       live,
-      task.toolUseId,
+      task.blockId,
       task.description,
       status,
       detail ?? (status === "failed" ? "Subagent failed." : undefined),

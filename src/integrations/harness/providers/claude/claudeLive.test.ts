@@ -166,6 +166,54 @@ function emitInlineSubagent(taskId = "t1") {
   });
 }
 
+/**
+ * A subagent Claude backgrounds. Like `emitBackgroundBash`, the snapshot
+ * (`background_tasks_changed`) names the task before `task_started` gives its
+ * real `tool_use_id` — that ordering is what used to leave a second,
+ * unopenable row behind for an agent task (#493; plain bash task types are
+ * not affected, since `isAgentTaskType` is false for them).
+ */
+function emitBackgroundAgent(taskId = "a1") {
+  emit({
+    type: "assistant",
+    session_id: "sess_1",
+    message: {
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_agent_bg",
+          name: "Task",
+          input: {
+            description: "Map the auth module",
+            subagent_type: "explore",
+            run_in_background: true,
+          },
+        },
+      ],
+    },
+  });
+  emit({
+    type: "system",
+    subtype: "background_tasks_changed",
+    tasks: [
+      {
+        task_id: taskId,
+        task_type: "local_agent",
+        description: "Map the auth module",
+      },
+    ],
+  });
+  emit({
+    type: "system",
+    subtype: "task_started",
+    task_id: taskId,
+    tool_use_id: "toolu_agent_bg",
+    description: "Map the auth module",
+    task_type: "local_agent",
+    is_backgrounded: true,
+  });
+}
+
 function emitBackgroundBash(taskId = "b1") {
   emit({
     type: "assistant",
@@ -978,6 +1026,65 @@ describe("claude subagents", () => {
       type: "session.error",
       message: "Claude Code exited",
     });
+  });
+});
+
+describe("claude backgrounded subagents", () => {
+  it("gives a backgrounded subagent one row, not two, when the snapshot arrives before task_started", async () => {
+    const { events } = await startTurn("s1");
+    emitBackgroundAgent();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Old code: the snapshot spun up a synthetic "agent:Map the auth module"
+    // row with no tool_use_id, then task_started spun up a second one keyed
+    // by the real "toolu_agent_bg" - two tool.started(agent) events, two rows.
+    const agentStarts = events.filter(
+      (event) => event.type === "tool.started" && event.kind === "agent",
+    );
+    expect(agentStarts).toHaveLength(1);
+
+    const session = events.reduce(
+      applyHarnessEvent,
+      newSession("claude", "/repo"),
+    );
+    const agentBlocks = session.blocks.filter(
+      (block) => block.tool?.kind === "agent",
+    );
+    expect(agentBlocks).toHaveLength(1);
+    expect(agentBlocks[0].tool).toMatchObject({ status: "in_progress" });
+  });
+
+  it("still attaches a backgrounded subagent's own steps to its one row", async () => {
+    const { events } = await startTurn("s1");
+    emitBackgroundAgent();
+    await new Promise((r) => setTimeout(r, 10));
+    const rowCallId = events.find(
+      (event) => event.type === "tool.started" && event.kind === "agent",
+    )?.callId;
+
+    // Nested calls carry parent_tool_use_id as the *real* id Claude gave the
+    // Task tool_use block, never the row's own (possibly synthetic) id - the
+    // row has to resolve under that real id too, or its steps go nowhere.
+    emit({
+      type: "assistant",
+      session_id: "sess_child",
+      parent_tool_use_id: "toolu_agent_bg",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_child_read",
+            name: "Read",
+            input: { file_path: "/repo/src/auth.ts" },
+          },
+        ],
+      },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const steps = events.filter((event) => event.type === "agent.step");
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({ callId: rowCallId });
   });
 });
 
