@@ -1170,6 +1170,18 @@ function handleAgentLifecycle(
   const progress = parseTaskProgress(rec);
   if (progress) {
     const task = live.agentTasks.get(progress.taskId);
+    // Prefer the task's own tracked block id over the event's tool_use_id:
+    // between the background snapshot and task_started, the row may still be
+    // keyed synthetically, and progress.toolUseId would otherwise open a
+    // second row instead of updating the one already showing.
+    const blockId = task?.blockId ?? progress.toolUseId;
+    // Neither the task nor this event names a real id yet - the Task
+    // tool_use or task_started that would give one may just not have
+    // arrived yet, or never will (a reconnect that missed both). Wait for
+    // one of those instead of minting a synthetic "agent:<title>" row for
+    // a subagent nothing has actually opened a row for.
+    if (!blockId) return true;
+    if (task) task.blockId = blockId;
     const title = progress.description || task?.description || "Subagent";
     const detail =
       progress.summary ||
@@ -1177,13 +1189,9 @@ function handleAgentLifecycle(
       (progress.subagentType
         ? `${progress.subagentType.replace(/[_-]+/g, " ")} subagent`
         : undefined);
-    // Prefer the task's own tracked block id over the event's tool_use_id:
-    // between the background snapshot and task_started, the row may still be
-    // keyed synthetically, and progress.toolUseId would otherwise open a
-    // second row instead of updating the one already showing.
     upsertAgentTool(
       live,
-      task?.blockId ?? progress.toolUseId,
+      blockId,
       title,
       "in_progress",
       detail,
@@ -1483,7 +1491,10 @@ function completeAgentTask(
 ): void {
   const task = live.agentTasks.get(taskId);
   live.agentTasks.delete(taskId);
-  if (task) {
+  // A task that never got a real id (only ever seen in a snapshot, never
+  // task_started or task_progress with one) never opened a row either -
+  // completing it here must not mint a synthetic one just to show it done.
+  if (task?.blockId) {
     upsertAgentTool(
       live,
       task.blockId,

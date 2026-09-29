@@ -1086,6 +1086,55 @@ describe("claude backgrounded subagents", () => {
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({ callId: rowCallId });
   });
+
+  it("never opens a synthetic row from progress alone, or phantom-completes one later", async () => {
+    const { events } = await startTurn("s1");
+    // A reconnect-shaped gap: only the snapshot ever names this task - the
+    // Task tool_use itself and task_started, either of which would give a
+    // real id, are both never seen (the gap the PR body calls out).
+    emit({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [
+        {
+          task_id: "a9",
+          task_type: "local_agent",
+          description: "Grep the auth module",
+        },
+      ],
+    });
+    emit({
+      type: "system",
+      subtype: "task_progress",
+      task_id: "a9",
+      description: "Grep the auth module",
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Old code: task.blockId and progress.toolUseId are both unset here, so
+    // upsertAgentTool fell back to a synthetic "agent:Grep the auth module"
+    // row for a subagent nothing had actually opened a row for.
+    expect(
+      events.filter(
+        (event) => event.type === "tool.started" && event.kind === "agent",
+      ),
+    ).toHaveLength(0);
+
+    // The task drops off the next snapshot - completeAgentTask must not
+    // mint a synthetic row just to immediately show it "completed".
+    emit({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [],
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(
+      events.filter(
+        (event) => event.type === "tool.started" && event.kind === "agent",
+      ),
+    ).toHaveLength(0);
+  });
 });
 
 describe("claude background tasks", () => {
