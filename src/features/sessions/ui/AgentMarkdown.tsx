@@ -361,9 +361,7 @@ function MarkdownCode({
       {fence.filePath ? (
         <MarkdownCodePath path={fence.filePath} startLine={fence.startLine} />
       ) : isPlaintextFallback ? (
-        <span className="markdown-code-fallback-label" aria-hidden="true">
-          {fence.language}
-        </span>
+        <span className="markdown-code-fallback-label">{fence.language}</span>
       ) : null}
       <CodeCopyButton code={code} />
       <CodeBlock
