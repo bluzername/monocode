@@ -865,7 +865,27 @@ function handleUser(live: Live, rec: Record<string, unknown>): void {
         text: result.text,
       });
     }
+    if (isAgentToolName(tool.name)) settleInlineAgentTask(live, tool.id);
   }
+}
+
+/**
+ * A subagent that was never backgrounded reports back on the parent's own tool
+ * result, and Claude sends no task record for one that ended inline. Without
+ * this its task would keep the turn open for good: the reply reads as finished
+ * while the composer and the plan's Build button stay disabled until a restart.
+ */
+function settleInlineAgentTask(live: Live, toolUseId: string): void {
+  let settled = false;
+  for (const [taskId, task] of [...live.agentTasks]) {
+    if (task.toolUseId !== toolUseId || task.backgrounded) continue;
+    live.agentTasks.delete(taskId);
+    live.backgroundTasks.delete(taskId);
+    settled = true;
+  }
+  if (!settled) return;
+  maybeFinishTurn(live);
+  syncBackgroundWait(live);
 }
 
 function handleResult(live: Live, rec: Record<string, unknown>): void {
@@ -1207,12 +1227,16 @@ function handleAgentLifecycle(
   }
   for (const row of liveTasks) {
     if (live.agentTasks.has(row.taskId)) continue;
+    // The list carries no tool_use_id and often lands before task_started, so
+    // find the Agent call that spawned it rather than opening a second row.
+    const toolUseId = unclaimedAgentCall(live, row.description);
     live.agentTasks.set(row.taskId, {
       taskId: row.taskId,
+      toolUseId,
       description: row.description,
       backgrounded: true,
     });
-    upsertAgentTool(live, undefined, row.description, "in_progress");
+    upsertAgentTool(live, toolUseId, row.description, "in_progress");
   }
   maybeFinishTurn(live);
   syncBackgroundWait(live);
@@ -1370,6 +1394,22 @@ function isBackgroundedAgentTool(live: Live, toolUseId: string): boolean {
     if (task.toolUseId === toolUseId && task.backgrounded) return true;
   }
   return false;
+}
+
+/** The latest Agent call with this description that no task has claimed yet. */
+function unclaimedAgentCall(
+  live: Live,
+  description: string,
+): string | undefined {
+  const claimed = new Set(
+    [...live.agentTasks.values()].map((task) => task.toolUseId),
+  );
+  let match: string | undefined;
+  for (const tool of live.toolsById.values()) {
+    if (!isAgentToolName(tool.name) || claimed.has(tool.id)) continue;
+    if (stringField(tool.input, "description") === description) match = tool.id;
+  }
+  return match;
 }
 
 function upsertAgentTool(
